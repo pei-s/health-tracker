@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>体重・体脂肪トラッカー</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0f172a;
+    --surface: #1e293b;
+    --surface2: #334155;
+    --accent1: #38bdf8;
+    --accent2: #f472b6;
+    --text: #f1f5f9;
+    --text-muted: #94a3b8;
+    --radius: 16px;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    min-height: 100dvh;
+    padding-bottom: 90px;
+  }
+
+  header {
+    padding: 20px 20px 0;
+    text-align: center;
+  }
+  header h1 { font-size: 1.4rem; font-weight: 700; letter-spacing: -0.5px; }
+  header p { font-size: 0.8rem; color: var(--text-muted); margin-top: 4px; }
+
+  nav {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    background: var(--surface);
+    display: flex;
+    border-top: 1px solid var(--surface2);
+    z-index: 100;
+  }
+  nav button {
+    flex: 1;
+    padding: 14px 0 10px;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    transition: color 0.2s;
+  }
+  nav button.active { color: var(--accent1); }
+  nav button svg { width: 22px; height: 22px; }
+
+  .page { display: none; padding: 16px; }
+  .page.active { display: block; }
+
+  /* ---- INPUT PAGE ---- */
+  .card {
+    background: var(--surface);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .card-title {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    margin-bottom: 14px;
+  }
+
+  .today-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .stat-box {
+    background: var(--surface);
+    border-radius: var(--radius);
+    padding: 16px;
+    text-align: center;
+  }
+  .stat-label { font-size: 0.72rem; color: var(--text-muted); }
+  .stat-value { font-size: 2rem; font-weight: 700; line-height: 1.1; margin-top: 4px; }
+  .stat-value.weight { color: var(--accent1); }
+  .stat-value.fat { color: var(--accent2); }
+  .stat-unit { font-size: 0.8rem; color: var(--text-muted); }
+
+  .input-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+  .input-group label {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+  }
+  .input-group input {
+    width: 100%;
+    background: var(--bg);
+    border: 1.5px solid var(--surface2);
+    border-radius: 10px;
+    padding: 12px 14px;
+    color: var(--text);
+    font-size: 1.1rem;
+    font-weight: 600;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .input-group input:focus { border-color: var(--accent1); }
+
+  .date-row {
+    margin-bottom: 14px;
+  }
+  .date-row label {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+  }
+  .date-row input {
+    width: 100%;
+    background: var(--bg);
+    border: 1.5px solid var(--surface2);
+    border-radius: 10px;
+    padding: 12px 14px;
+    color: var(--text);
+    font-size: 0.95rem;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .date-row input:focus { border-color: var(--accent1); }
+
+  .btn-save {
+    width: 100%;
+    background: linear-gradient(135deg, var(--accent1), #0ea5e9);
+    border: none;
+    border-radius: 12px;
+    padding: 16px;
+    color: #fff;
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 0.3px;
+    transition: opacity 0.2s, transform 0.1s;
+    active: scale(0.98);
+  }
+  .btn-save:active { opacity: 0.85; transform: scale(0.98); }
+
+  /* ---- CHART PAGE ---- */
+  .period-tabs {
+    display: flex;
+    background: var(--surface);
+    border-radius: 10px;
+    padding: 4px;
+    margin-bottom: 16px;
+    gap: 4px;
+  }
+  .period-tabs button {
+    flex: 1;
+    padding: 8px;
+    border: none;
+    border-radius: 7px;
+    background: none;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .period-tabs button.active {
+    background: var(--surface2);
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  .chart-card {
+    background: var(--surface);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .chart-title {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+  }
+  .chart-title span {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-left: 6px;
+  }
+  canvas { max-height: 200px; }
+
+  /* ---- HISTORY PAGE ---- */
+  .history-list { display: flex; flex-direction: column; gap: 10px; }
+  .history-item {
+    background: var(--surface);
+    border-radius: 12px;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .history-date { font-size: 0.8rem; color: var(--text-muted); }
+  .history-vals { display: flex; gap: 16px; align-items: center; }
+  .hval { text-align: right; }
+  .hval-num { font-size: 1.1rem; font-weight: 700; }
+  .hval-num.w { color: var(--accent1); }
+  .hval-num.f { color: var(--accent2); }
+  .hval-unit { font-size: 0.7rem; color: var(--text-muted); }
+  .btn-del {
+    background: none;
+    border: none;
+    color: #ef4444;
+    cursor: pointer;
+    padding: 4px;
+    margin-left: 8px;
+    opacity: 0.6;
+    transition: opacity 0.2s;
+  }
+  .btn-del:active { opacity: 1; }
+
+  .empty-state {
+    text-align: center;
+    padding: 48px 20px;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+  }
+  .empty-state .icon { font-size: 3rem; margin-bottom: 12px; }
+
+  .toast {
+    position: fixed;
+    bottom: 100px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: #22c55e;
+    color: #fff;
+    padding: 10px 24px;
+    border-radius: 100px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    opacity: 0;
+    transition: all 0.3s;
+    pointer-events: none;
+    z-index: 200;
+    white-space: nowrap;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<!-- INPUT -->
+<div id="page-input" class="page active">
+  <header><h1>体重・体脂肪トラッカー</h1><p>日々の記録で理想の体へ</p></header>
+  <br>
+  <div class="today-stats">
+    <div class="stat-box">
+      <div class="stat-label">最新 体重</div>
+      <div class="stat-value weight" id="latest-weight">--</div>
+      <div class="stat-unit">kg</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">最新 体脂肪率</div>
+      <div class="stat-value fat" id="latest-fat">--</div>
+      <div class="stat-unit">%</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">記録を追加</div>
+    <div class="date-row">
+      <label>日付</label>
+      <input type="date" id="input-date">
+    </div>
+    <div class="input-row">
+      <div class="input-group">
+        <label>体重 (kg)</label>
+        <input type="number" id="input-weight" placeholder="60.0" step="0.1" min="0" max="300">
+      </div>
+      <div class="input-group">
+        <label>体脂肪率 (%)</label>
+        <input type="number" id="input-fat" placeholder="20.0" step="0.1" min="0" max="100">
+      </div>
+    </div>
+    <button class="btn-save" onclick="saveRecord()">保存する</button>
+  </div>
+</div>
+
+<!-- CHART -->
+<div id="page-chart" class="page">
+  <header><h1>グラフ</h1><p>推移を確認しよう</p></header>
+  <br>
+  <div class="period-tabs">
+    <button class="active" onclick="setPeriod(7, this)">7日</button>
+    <button onclick="setPeriod(30, this)">30日</button>
+    <button onclick="setPeriod(90, this)">3ヶ月</button>
+    <button onclick="setPeriod(0, this)">全期間</button>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">体重<span id="avg-weight">--</span> kg</div>
+    <canvas id="chart-weight"></canvas>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">体脂肪率<span id="avg-fat">--</span> %</div>
+    <canvas id="chart-fat"></canvas>
+  </div>
+</div>
+
+<!-- HISTORY -->
+<div id="page-history" class="page">
+  <header><h1>記録一覧</h1><p>タップで削除できます</p></header>
+  <br>
+  <div id="history-list"></div>
+</div>
+
+<!-- NAV -->
+<nav>
+  <button class="active" onclick="showPage('input', this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+    記録
+  </button>
+  <button onclick="showPage('chart', this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+    グラフ
+  </button>
+  <button onclick="showPage('history', this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+    履歴
+  </button>
+</nav>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const STORAGE_KEY = 'health_records_v1';
+let records = [];
+let chartWeight = null, chartFat = null;
+let currentPeriod = 7;
+
+function load() {
+  try { records = JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch { records = []; }
+  records.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function save() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+}
+
+function today() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2000);
+}
+
+function saveRecord() {
+  const date = document.getElementById('input-date').value;
+  const weight = parseFloat(document.getElementById('input-weight').value);
+  const fat = parseFloat(document.getElementById('input-fat').value);
+
+  if (!date) { showToast('日付を選択してください'); return; }
+  if (isNaN(weight) && isNaN(fat)) { showToast('体重か体脂肪率を入力してください'); return; }
+
+  const idx = records.findIndex(r => r.date === date);
+  const rec = { date, weight: isNaN(weight) ? null : weight, fat: isNaN(fat) ? null : fat };
+
+  if (idx >= 0) { records[idx] = rec; showToast('記録を更新しました'); }
+  else { records.push(rec); records.sort((a, b) => a.date.localeCompare(b.date)); showToast('記録しました！'); }
+
+  save();
+  updateLatest();
+  document.getElementById('input-weight').value = '';
+  document.getElementById('input-fat').value = '';
+}
+
+function deleteRecord(date) {
+  if (!confirm(`${date} の記録を削除しますか？`)) return;
+  records = records.filter(r => r.date !== date);
+  save();
+  updateLatest();
+  renderHistory();
+  renderCharts();
+}
+
+function updateLatest() {
+  const wRecs = records.filter(r => r.weight !== null);
+  const fRecs = records.filter(r => r.fat !== null);
+  document.getElementById('latest-weight').textContent = wRecs.length ? wRecs[wRecs.length-1].weight.toFixed(1) : '--';
+  document.getElementById('latest-fat').textContent = fRecs.length ? fRecs[fRecs.length-1].fat.toFixed(1) : '--';
+}
+
+function getFilteredRecords() {
+  if (currentPeriod === 0) return records;
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - currentPeriod);
+  const cutStr = cutoff.toISOString().slice(0, 10);
+  return records.filter(r => r.date >= cutStr);
+}
+
+function setPeriod(days, btn) {
+  currentPeriod = days;
+  document.querySelectorAll('.period-tabs button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderCharts();
+}
+
+function renderCharts() {
+  const data = getFilteredRecords();
+  const labels = data.map(r => r.date.slice(5));
+  const weights = data.map(r => r.weight);
+  const fats = data.map(r => r.fat);
+
+  const wVals = weights.filter(v => v !== null);
+  const fVals = fats.filter(v => v !== null);
+  document.getElementById('avg-weight').textContent = wVals.length ? (wVals.reduce((a,b) => a+b, 0) / wVals.length).toFixed(1) : '--';
+  document.getElementById('avg-fat').textContent = fVals.length ? (fVals.reduce((a,b) => a+b, 0) / fVals.length).toFixed(1) : '--';
+
+  const commonOptions = {
+    responsive: true,
+    maintainAspectRatio: true,
+    interaction: { mode: 'index', intersect: false },
+    plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.parsed.y ?? '未記録'}` } } },
+    scales: {
+      x: { grid: { color: '#334155' }, ticks: { color: '#94a3b8', maxTicksLimit: 7, font: { size: 10 } } },
+      y: { grid: { color: '#334155' }, ticks: { color: '#94a3b8', font: { size: 10 } } }
+    }
+  };
+
+  if (chartWeight) chartWeight.destroy();
+  chartWeight = new Chart(document.getElementById('chart-weight'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        data: weights,
+        borderColor: '#38bdf8',
+        backgroundColor: 'rgba(56,189,248,0.1)',
+        fill: true,
+        tension: 0.4,
+        pointRadius: data.length > 30 ? 0 : 4,
+        pointBackgroundColor: '#38bdf8',
+        spanGaps: true
+      }]
+    },
+    options: { ...commonOptions }
+  });
+
+  if (chartFat) chartFat.destroy();
+  chartFat = new Chart(document.getElementById('chart-fat'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        data: fats,
+        borderColor: '#f472b6',
+        backgroundColor: 'rgba(244,114,182,0.1)',
+        fill: true,
+        tension: 0.4,
+        pointRadius: data.length > 30 ? 0 : 4,
+        pointBackgroundColor: '#f472b6',
+        spanGaps: true
+      }]
+    },
+    options: { ...commonOptions }
+  });
+}
+
+function renderHistory() {
+  const el = document.getElementById('history-list');
+  if (!records.length) {
+    el.innerHTML = '<div class="empty-state"><div class="icon">📋</div>まだ記録がありません</div>';
+    return;
+  }
+  const sorted = [...records].reverse();
+  el.innerHTML = '<div class="history-list">' + sorted.map(r => `
+    <div class="history-item">
+      <div class="history-date">${r.date}</div>
+      <div class="history-vals">
+        <div class="hval">
+          <div class="hval-num w">${r.weight !== null ? r.weight.toFixed(1) : '--'}</div>
+          <div class="hval-unit">kg</div>
+        </div>
+        <div class="hval">
+          <div class="hval-num f">${r.fat !== null ? r.fat.toFixed(1) : '--'}</div>
+          <div class="hval-unit">%</div>
+        </div>
+        <button class="btn-del" onclick="deleteRecord('${r.date}')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+        </button>
+      </div>
+    </div>
+  `).join('') + '</div>';
+}
+
+function showPage(name, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  btn.classList.add('active');
+  if (name === 'chart') renderCharts();
+  if (name === 'history') renderHistory();
+}
+
+// init
+load();
+document.getElementById('input-date').value = today();
+updateLatest();
+</script>
+</body>
+</html>
